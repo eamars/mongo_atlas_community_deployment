@@ -1,0 +1,82 @@
+# MongoDB Atlas Local: mongod + mongot (Atlas Search / Vector Search) in one container,
+# plus mongo-express (web UI) and the MongoDB MCP server.
+#
+# Atlas Local reference: https://www.mongodb.com/docs/atlas/cli/current/atlas-cli-deploy-docker/
+# Vector search setup:   https://www.mongodb.com/docs/atlas/atlas-vector-search/tutorials/vector-search-quick-start/?deployment-type=local&embedding=byo&interface=mongosh
+# Embedding generation:  https://www.mongodb.com/docs/atlas/atlas-vector-search/crud-embeddings/create-embeddings-manual/?embedding-model=voyage&data-source=existing&language-no-interface=python&interface=mongosh
+# Connection string:     mongodb://192.168.2.10:27027/?directConnection=true
+#
+# Secrets are read from .env (see .env.example).
+
+services:
+  mongodb:
+    image: mongodb/mongodb-atlas-local:8.0
+    container_name: mongodb-atlas
+    # The single-node replica set is registered under this hostname; keep it stable.
+    hostname: mongodb
+    restart: unless-stopped
+    environment:
+      DO_NOT_TRACK: "1"
+    ulimits:
+      nofile:
+        soft: 64000
+        hard: 64000
+    ports:
+      - "27027:27017"
+    volumes:
+      - mongodb-data:/data/db
+      - mongodb-config:/data/configdb
+      - mongot-data:/data/mongot
+    networks:
+      - mongo-atlas
+
+  mongo-express:
+    image: mongo-express:latest
+    container_name: mongo-atlas-express
+    restart: unless-stopped
+    ports:
+      - "8082:8081"
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://mongodb:27017/?directConnection=true
+
+      # Web interface login. Current releases read _ENABLED, older ones the bare name.
+      ME_CONFIG_BASICAUTH_ENABLED: "true"
+      ME_CONFIG_BASICAUTH: "true"
+      ME_CONFIG_BASICAUTH_USERNAME: ${ME_BASICAUTH_USERNAME:?set ME_BASICAUTH_USERNAME in .env}
+      ME_CONFIG_BASICAUTH_PASSWORD: ${ME_BASICAUTH_PASSWORD:?set ME_BASICAUTH_PASSWORD in .env}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - mongo-atlas
+
+  mcp-server:
+    image: mongodb/mongodb-mcp-server:latest
+    container_name: mongodb-atlas-mcp-server
+    restart: unless-stopped
+    ports:
+      - "4003:3000"
+    environment:
+      MDB_MCP_TRANSPORT: http
+      MDB_MCP_HTTP_HOST: 0.0.0.0
+      MDB_MCP_HTTP_PORT: 3000
+      MDB_MCP_HTTP_RESPONSE_TYPE: sse
+      MDB_MCP_CONNECTION_STRING: mongodb://mongodb:27017/?directConnection=true
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - mongo-atlas
+
+networks:
+  mongo-atlas:
+    name: mongo-atlas
+
+# Fixed names so the data survives regardless of the compose project/directory name.
+volumes:
+  mongodb-data:
+    name: mongodb-atlas-data
+  mongodb-config:
+    name: mongodb-atlas-config
+  mongot-data:
+    name: mongodb-atlas-mongot

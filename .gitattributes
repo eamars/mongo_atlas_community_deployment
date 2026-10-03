@@ -1,0 +1,5 @@
+# Scripts run on the Linux docker host
+*.sh text eol=lf
+*.js text eol=lf
+*.yml text eol=lf
+.env* text eol=lf
